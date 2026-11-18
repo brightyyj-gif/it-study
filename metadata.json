@@ -1,0 +1,6 @@
+{
+  "name": "IT STUDY",
+  "description": "Java, Spring Boot, React, 생성형 AI 실전 프로젝트 스터디 모집 및 신청 관리 플랫폼",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

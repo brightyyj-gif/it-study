@@ -1,0 +1,199 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 기본 전체 차단 안전망 (Global Safety Net)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ---------------------------------------------------------
+    // 공통 검증 헬퍼 함수 (Primitives)
+    // ---------------------------------------------------------
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'brightyyj@gmail.com';
+    }
+
+    // 관리자 권한 검증: Firebase 인증 + 이메일 인증 + admins 컬렉션 존재 여부(또는 부트스트랩 관리자)
+    function isAdmin() {
+      return isVerifiedUser() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        isBootstrappedAdmin()
+      );
+    }
+
+    // ---------------------------------------------------------
+    // 스키마 검증 헬퍼 (Validation Blueprints)
+    // ---------------------------------------------------------
+    function isValidApplication(data, applicationId) {
+      return data.keys().hasAll([
+        'id', 'name', 'email', 'phone', 'interest', 'level', 'motivation', 'status', 'createdAt'
+      ])
+      && data.keys().hasOnly([
+        'id', 'name', 'email', 'phone', 'interest', 'level', 'motivation', 'status', 'createdAt'
+      ])
+      && data.id is string
+      && data.id == applicationId
+      && data.id.size() >= 1
+      && data.id.size() <= 128
+      && data.name is string
+      && data.name.size() >= 1
+      && data.name.size() <= 50
+      && data.email is string
+      && data.email.size() >= 5
+      && data.email.size() <= 120
+      && data.email.matches('^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$')
+      && data.phone is string
+      && data.phone.size() >= 8
+      && data.phone.size() <= 25
+      && data.interest in ['Java', 'React', 'Spring Boot', 'AI']
+      && data.level in ['초급', '중급', '고급']
+      && data.motivation is string
+      && data.motivation.size() >= 5
+      && data.motivation.size() <= 1000
+      && data.status in ['WAITING', 'APPROVED', 'REJECTED']
+      && data.createdAt is timestamp;
+    }
+
+    function isValidAdminUser(data, adminId) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'role', 'createdAt'])
+      && data.keys().hasOnly(['uid', 'email', 'displayName', 'role', 'createdAt'])
+      && data.uid is string
+      && data.uid == adminId
+      && data.uid.size() >= 1
+      && data.uid.size() <= 128
+      && data.email is string
+      && data.email.size() >= 5
+      && data.email.size() <= 120
+      && data.displayName is string
+      && data.displayName.size() >= 1
+      && data.displayName.size() <= 80
+      && data.role in ['ADMIN', 'SUPER_ADMIN']
+      && data.createdAt is timestamp;
+    }
+
+    function isValidStudyTrack(data, studyId) {
+      return data.keys().hasAll([
+        'id', 'title', 'category', 'schedule', 'capacity', 'isRecruiting', 'summary', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'id', 'title', 'category', 'schedule', 'capacity', 'isRecruiting', 'summary', 'updatedAt'
+      ])
+      && data.id is string
+      && data.id == studyId
+      && data.id.size() >= 1
+      && data.id.size() <= 64
+      && data.title is string
+      && data.title.size() >= 2
+      && data.title.size() <= 80
+      && data.category in ['Java', 'React', 'Spring Boot', 'AI']
+      && data.schedule is string
+      && data.schedule.size() >= 2
+      && data.schedule.size() <= 80
+      && data.capacity is number
+      && data.capacity >= 1
+      && data.capacity <= 500
+      && data.isRecruiting is bool
+      && data.summary is string
+      && data.summary.size() >= 5
+      && data.summary.size() <= 300
+      && data.updatedAt is timestamp;
+    }
+
+    // ---------------------------------------------------------
+    // 1. applications 컬렉션: 일반 사용자는 등록만 가능, 조회/수정/삭제는 관리자만 가능
+    // ---------------------------------------------------------
+    match /applications/{applicationId} {
+      // 일반 사용자 조회 차단 / 관리자만 단일 문서 조회 및 목록 조회 가능
+      allow get: if isValidId(applicationId) && isAdmin();
+      allow list: if isAdmin();
+
+      // 일반 사용자 신청 등록 (최초 status는 반드시 WAITING, createdAt은 서버 시간 필수)
+      allow create: if isValidId(applicationId)
+        && isValidApplication(incoming(), applicationId)
+        && incoming().status == 'WAITING'
+        && incoming().createdAt == request.time;
+
+      // 관리자만 상태 변경 가능 (id 및 createdAt 불변 유지)
+      allow update: if isValidId(applicationId)
+        && isAdmin()
+        && isValidApplication(incoming(), applicationId)
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status'])
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt;
+
+      // 관리자만 신청 내역 삭제 가능
+      allow delete: if isValidId(applicationId) && isAdmin();
+    }
+
+    // ---------------------------------------------------------
+    // 2. admins 컬렉션: 관리자 권한 검증용
+    // ---------------------------------------------------------
+    match /admins/{adminId} {
+      // 로그인한 사용자가 본인의 관리자 등록 문서만 확인 가능, 전체 목록은 관리자만 가능
+      allow get: if isValidId(adminId) && isVerifiedUser() && (request.auth.uid == adminId || isAdmin());
+      allow list: if isAdmin();
+
+      // 기존 관리자 또는 부트스트랩 관리자만 관리자 추가/수정/삭제 가능 (자가 승격 방지)
+      allow create: if isValidId(adminId)
+        && isAdmin()
+        && isValidAdminUser(incoming(), adminId)
+        && incoming().createdAt == request.time;
+
+      allow update: if isValidId(adminId)
+        && isAdmin()
+        && isValidAdminUser(incoming(), adminId)
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'role'])
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt;
+
+      allow delete: if isValidId(adminId) && isAdmin();
+    }
+
+    // ---------------------------------------------------------
+    // 3. studies 컬렉션: 스터디 과정 안내 및 관리자 모집 상태 관리
+    // ---------------------------------------------------------
+    match /studies/{studyId} {
+      // 메인 페이지 스터디 소개 및 모집 상태 표시를 위해 공개 읽기 허용
+      allow get: if isValidId(studyId);
+      allow list: if true;
+
+      // 관리자만 스터디 과정 생성, 수정, 삭제 가능
+      allow create: if isValidId(studyId)
+        && isAdmin()
+        && isValidStudyTrack(incoming(), studyId)
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(studyId)
+        && isAdmin()
+        && isValidStudyTrack(incoming(), studyId)
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'title', 'category', 'schedule', 'capacity', 'isRecruiting', 'summary', 'updatedAt'
+        ])
+        && incoming().id == existing().id
+        && incoming().updatedAt == request.time;
+
+      allow delete: if isValidId(studyId) && isAdmin();
+    }
+  }
+}

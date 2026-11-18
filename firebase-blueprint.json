@@ -1,0 +1,193 @@
+{
+  "entities": {
+    "Application": {
+      "title": "Study Application",
+      "description": "IT 스터디 지원자 신청 정보",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "신청 문서 고유 ID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "지원자 이름",
+          "minLength": 1,
+          "maxLength": 50
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "지원자 이메일 주소",
+          "minLength": 5,
+          "maxLength": 120,
+          "pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
+        },
+        "phone": {
+          "type": "string",
+          "description": "지원자 휴대폰 번호",
+          "minLength": 8,
+          "maxLength": 25
+        },
+        "interest": {
+          "type": "string",
+          "description": "관심 분야",
+          "enum": ["Java", "React", "Spring Boot", "AI"]
+        },
+        "level": {
+          "type": "string",
+          "description": "개발 경험 수준",
+          "enum": ["초급", "중급", "고급"]
+        },
+        "motivation": {
+          "type": "string",
+          "description": "신청 동기",
+          "minLength": 5,
+          "maxLength": 1000
+        },
+        "status": {
+          "type": "string",
+          "description": "승인 상태",
+          "enum": ["WAITING", "APPROVED", "REJECTED"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "신청 일시 (서버 타임스탬프)"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "email",
+        "phone",
+        "interest",
+        "level",
+        "motivation",
+        "status",
+        "createdAt"
+      ]
+    },
+    "AdminUser": {
+      "title": "Admin User",
+      "description": "관리자 권한 검증용 계정 문서",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "관리자 이메일",
+          "minLength": 5,
+          "maxLength": 120
+        },
+        "displayName": {
+          "type": "string",
+          "description": "관리자 표시 이름",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "role": {
+          "type": "string",
+          "description": "관리자 역할",
+          "enum": ["ADMIN", "SUPER_ADMIN"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "등록 일시"
+        }
+      },
+      "required": ["uid", "email", "displayName", "role", "createdAt"]
+    },
+    "StudyTrack": {
+      "title": "Study Track",
+      "description": "운영 중인 IT 스터디 과정 및 모집 상태",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "스터디 과정 ID",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "description": "과정명",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "category": {
+          "type": "string",
+          "description": "카테고리",
+          "enum": ["Java", "React", "Spring Boot", "AI"]
+        },
+        "schedule": {
+          "type": "string",
+          "description": "진행 일정",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "capacity": {
+          "type": "number",
+          "description": "모집 정원"
+        },
+        "isRecruiting": {
+          "type": "boolean",
+          "description": "모집 중 여부"
+        },
+        "summary": {
+          "type": "string",
+          "description": "과정 요약 설명",
+          "minLength": 5,
+          "maxLength": 300
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "수정 일시"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "category",
+        "schedule",
+        "capacity",
+        "isRecruiting",
+        "summary",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/applications/{applicationId}": {
+      "schema": {
+        "$ref": "#/entities/Application"
+      },
+      "description": "스터디 신청서 컬렉션 (일반 사용자는 생성만 가능, 관리자만 조회/수정/삭제 가능)"
+    },
+    "/admins/{adminId}": {
+      "schema": {
+        "$ref": "#/entities/AdminUser"
+      },
+      "description": "별도 관리자 권한 검증 컬렉션"
+    },
+    "/studies/{studyId}": {
+      "schema": {
+        "$ref": "#/entities/StudyTrack"
+      },
+      "description": "스터디 트랙 및 모집 상태 관리 컬렉션"
+    }
+  }
+}
